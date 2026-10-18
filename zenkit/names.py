@@ -8,7 +8,8 @@ import sys
 
 from .errors import ZenkitError
 
-MAX_NAME_LENGTH = 64
+# Short enough that every generated line stays inside the 100-column lint limit.
+MAX_NAME_LENGTH = 30
 
 # Lowercase words joined by single '-' or '_' separators, starting with a letter.
 _NAME_RE = re.compile(r"^[a-z][a-z0-9]*(?:[-_][a-z0-9]+)*$")
