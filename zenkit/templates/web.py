@@ -104,17 +104,28 @@ def app(environ: dict[str, Any], start_response: StartResponse) -> Iterable[byte
     return [] if method == "HEAD" else [body]
 '''
 
-SERVER = '''\
-"""Development server, started with the console script or ``python -m``."""
+SERVER = '''"""Development server, started with the console script or ``python -m``."""
 
 from __future__ import annotations
 
 import argparse
+import os
 from collections.abc import Sequence
-from wsgiref.simple_server import make_server
+from wsgiref.simple_server import WSGIServer, make_server
 
 from . import __version__
 from .app import app
+
+
+class DevServer(WSGIServer):
+    # On Windows SO_REUSEADDR lets a second process bind a port that is already being served,
+    # so requests would be split between two servers without any error.
+    allow_reuse_address = os.name != "nt"
+
+
+def create_server(host: str, port: int) -> WSGIServer:
+    """Bind the app to ``host:port`` (port 0 picks a free port) without serving yet."""
+    return make_server(host, port, app, server_class=DevServer)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -129,9 +140,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Serve the app with wsgiref until interrupted. For development only."""
+    """Serve the app until interrupted. Returns 1 if the address cannot be bound."""
     args = build_parser().parse_args(argv)
-    with make_server(args.host, args.port, app) as server:
+    try:
+        server = create_server(args.host, args.port)
+    except OSError as exc:
+        print(f"cannot listen on {args.host}:{args.port}: {exc.strerror or exc}")
+        return 1
+    with server:
         print(f"serving on http://{args.host}:{args.port}/ (Ctrl+C to stop)")
         try:
             server.serve_forever()
@@ -202,10 +218,13 @@ def test_head_has_length_but_no_body() -> None:
     assert body == b""
 '''
 
-TEST_SERVER = '''\
+TEST_SERVER = '''import json
+import threading
+import urllib.request
+
 import pytest
 
-from @@package@@.server import build_parser
+from @@package@@.server import build_parser, create_server, main
 
 
 def test_defaults() -> None:
@@ -217,6 +236,41 @@ def test_port_must_be_an_integer() -> None:
     with pytest.raises(SystemExit) as exc:
         build_parser().parse_args(["--port", "abc"])
     assert exc.value.code == 2
+
+
+def test_serves_real_http_requests() -> None:
+    server = create_server("127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        port = server.server_address[1]
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=5) as response:
+            assert response.status == 200
+            assert json.loads(response.read()) == {"status": "ok"}
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_a_second_server_cannot_share_a_port() -> None:
+    first = create_server("127.0.0.1", 0)
+    try:
+        port = first.server_address[1]
+        with pytest.raises(OSError):
+            create_server("127.0.0.1", port)
+    finally:
+        first.server_close()
+
+
+def test_main_reports_an_unbindable_address(capsys: pytest.CaptureFixture[str]) -> None:
+    first = create_server("127.0.0.1", 0)
+    try:
+        port = first.server_address[1]
+        assert main(["--port", str(port)]) == 1
+        assert "cannot listen" in capsys.readouterr().out
+    finally:
+        first.server_close()
 '''
 
 README = '''\
