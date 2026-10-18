@@ -71,7 +71,10 @@ def greet(who: str, *, shout: bool = False) -> str:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="@@name@@", description="@@description_py@@")
+    parser = argparse.ArgumentParser(
+        prog="@@name@@",
+        description="@@description_py@@",
+    )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("who", nargs="?", default="world", help="who to greet (default: world)")
     parser.add_argument("--shout", action="store_true", help="upper-case the greeting")
