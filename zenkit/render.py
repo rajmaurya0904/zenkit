@@ -13,6 +13,8 @@ PLACEHOLDER = re.compile(r"@@([a-z_]+)@@")
 PYTHON_VERSIONS = ("3.10", "3.11", "3.12", "3.13")
 DEFAULT_PYTHON = "3.11"
 
+MAX_DESCRIPTION_LENGTH = 72  # keeps generated docstrings and argparse lines under 100 columns
+
 LICENSE_CHOICES = ("mit", "bsd-3-clause", "none")
 _SPDX = {"mit": "MIT", "bsd-3-clause": "BSD-3-Clause"}
 
@@ -65,6 +67,11 @@ class Context:
             _check_single_line(label, value)
         if not self.description.strip():
             raise ZenkitError("description must not be empty")
+        if len(self.description.strip()) > MAX_DESCRIPTION_LENGTH:
+            raise ZenkitError(
+                f"description is {len(self.description.strip())} characters long; "
+                f"the limit is {MAX_DESCRIPTION_LENGTH}"
+            )
         package_name(self.name)  # raises ZenkitError for bad names
 
     @property
